@@ -483,7 +483,7 @@ TaskPart plan_in_animation_rrt(TimedConfigurationProblem &TP,
   // TP.C.watch(true);
 
 
-  bool sipp = false;
+  bool sipp = true;
 
   if (sipp)
   {
