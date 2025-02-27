@@ -65,9 +65,7 @@ manip::Parameters global_params;
 //   return PlanResult(PlanStatus::failed);
 // }
 
-Plan plan_multiple_arms_unsynchronized(
-    rai::Configuration &C, const RobotTaskPoseMap &rtpm,
-    const std::unordered_map<Robot, arr> &home_poses) {
+Plan plan_multiple_arms_unsynchronized(rai::Configuration &C, const RobotTaskPoseMap &rtpm, const std::unordered_map<Robot, arr> &home_poses) {
   // generate random sequence of robot/pt pairs
   std::vector<Robot> robots;
   for (const auto &element : home_poses) {
@@ -90,8 +88,7 @@ Plan plan_multiple_arms_unsynchronized(
   return plan_result.plan;
 }
 
-arr plan_line(rai::Configuration C, const rai::String &robot_prefix,
-              const std::vector<arr> &pts) {
+arr plan_line(rai::Configuration C, const rai::String &robot_prefix, const std::vector<arr> &pts) {
   OptOptions options;
   options.stopIters = 100;
   options.damping = 1e-3;
@@ -157,9 +154,7 @@ void line_test() {
   }
 }
 
-OrderedTaskSequence make_pick_pick_seq(const std::vector<Robot> &robots,
-                                       const uint num_objects,
-                                       const RobotTaskPoseMap &rtpm) {
+OrderedTaskSequence make_pick_pick_seq(const std::vector<Robot> &robots, const uint num_objects, const RobotTaskPoseMap &rtpm) {
 
   OrderedTaskSequence seq;
 
@@ -234,8 +229,7 @@ OrderedTaskSequence make_pick_pick_seq(const std::vector<Robot> &robots,
   return seq;
 }
 
-RobotTaskPoseMap
-compute_keyframes(rai::Configuration &C, const std::vector<Robot> &robots,
+RobotTaskPoseMap compute_keyframes(rai::Configuration &C, const std::vector<Robot> &robots,
                   const bool use_picks = true, const bool use_handovers = true,
                   const bool use_repeated_picks = true,
                   const bool attempt_all_grasp_directions = false) {
@@ -264,8 +258,7 @@ compute_keyframes(rai::Configuration &C, const std::vector<Robot> &robots,
 
 void export_keyframes() {}
 
-void set_to_mode_for_primitive(rai::Configuration &C, RobotTaskPair rtp,
-                               TaskPoses poses, const uint phase) {
+void set_to_mode_for_primitive(rai::Configuration &C, RobotTaskPair rtp, TaskPoses poses, const uint phase) {
   if (rtp.task.type == PrimitiveType::handover) {
     for (uint i = 0; i < phase; ++i) {
       const auto pose = poses[i];
@@ -366,9 +359,7 @@ void set_to_mode_for_primitive(rai::Configuration &C, RobotTaskPair rtp,
   }
 }
 
-void export_scene_at_keyframes(
-    rai::Configuration &C, const std::vector<Robot> &robots,
-    const RobotTaskPoseMap &robot_task_pose_mapping) {
+void export_scene_at_keyframes(rai::Configuration &C, const std::vector<Robot> &robots, const RobotTaskPoseMap &robot_task_pose_mapping) {
   std::time_t t = std::time(nullptr);
   std::tm tm = *std::localtime(&t);
 
@@ -403,8 +394,7 @@ void export_scene_at_keyframes(
   }
 }
 
-bool check_scene_validity(rai::Configuration C,
-                          const std::vector<Robot> &robots) {
+bool check_scene_validity(rai::Configuration C, const std::vector<Robot> &robots) {
   for (const auto &r : robots) {
     setActive(C, r);
     ConfigurationProblem cp(C);
@@ -434,6 +424,14 @@ bool check_scene_validity(rai::Configuration C,
 extern "C" int backtrace(void **buffer, int size) {
   return 0; // Prevent stack trace generation
 }
+
+
+
+//======================================================================================================================================================================
+//======================================================================================================================================================================
+
+
+
 
 int main(int argc, char **argv) {
   auto console = spdlog::stdout_color_mt("console");
@@ -905,14 +903,16 @@ int main(int argc, char **argv) {
     // export plan
     // export_plan(robots, home_poses, new_plan, new_seq, buffer.str(), iter,
     //                duration);
-  } else if (mode == "performance_benchmark") {
-  } else if (mode == "optimization_benchmark") {
-  } else if (mode == "random_search") {
+  } 
+  else if (mode == "performance_benchmark") {} 
+  else if (mode == "optimization_benchmark") {}
+  else if (mode == "random_search") {
     // random search
     const auto plan = plan_multiple_arms_random_search(
         C, robot_task_pose_mapping, home_poses, max_attempts,
         avoid_repeated_evaluations);
-  } else if (mode == "greedy_random_search") {
+  } 
+  else if (mode == "greedy_random_search") {
     // greedy random search
     const auto plan = plan_multiple_arms_greedy_random_search(
         C, robot_task_pose_mapping, home_poses, max_attempts);
