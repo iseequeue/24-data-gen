@@ -482,272 +482,478 @@ TaskPart plan_in_animation_rrt(TimedConfigurationProblem &TP,
   // TP.C.setJointState(q1);
   // TP.C.watch(true);
 
-  PathFinder_RRT_Time planner(TP);
-  planner.vmax = prefix.vmax;
-  planner.lambda = 0.5;
-  planner.maxIter = 500;
-  planner.maxInitialSamples = 10;
-  // planner.disp = true;
-  // planner.optimize = optimize;
-  // planner.step_time = 5;
-  planner.maxIter = 500;
-  planner.goalSampleProbability = 0.9; // 0.9
-  const bool informed_sampling = rai::getParameter<bool>("informed_sampling", true);
-  planner.informed_sampling = informed_sampling;
 
-  const uint dt_max_vel = uint(std::ceil(absMax(q0 - q1) / prefix.vmax));
-  // const uint dt_max_vel = uint(std::ceil(length(q0 - q1) / prefix.vmax));
+  bool sipp = false;
 
-  // the goal should always be free at the end of the animation, as we always
-  // plan an exit path but it can be the case that we are currently planning an
-  // exit path, thus we include the others
-  const uint t_max_to_check = std::max({time_lb, t0 + dt_max_vel, TP.A.getT()});
-  // establish time at which the goal is free, and stays free
-  const uint t_earliest_feas = get_earliest_feasible_time(
-      TP, q1, t_max_to_check, std::max({time_lb, t0 + dt_max_vel}));
+  if (sipp)
+  {
+    PathFinder_SIRRT_Time planner(TP);
 
-  spdlog::info("t_earliest_feas {}", t_earliest_feas);
-  spdlog::info("last anim time {}", TP.A.getT());
-  // std::cout << "t_earliest_feas " << t_earliest_feas << std::endl;
-  // std::cout << "last anim time " << TP.A.getT() << std::endl;
 
-  if (false) {
-    TP.A.setToTime(TP.C, TP.A.getT());
-    TP.C.setJointState(q1);
-    TP.C.watch(true);
-  }
+    const uint dt_max_vel = uint(std::ceil(absMax(q0 - q1) / prefix.vmax));
+    // const uint dt_max_vel = uint(std::ceil(length(q0 - q1) / prefix.vmax));
 
-  // run once without upper bound
-  // auto res_check_feasibility = planner.plan(q0, t0, q1, t_earliest_feas);
+    // the goal should always be free at the end of the animation, as we always
+    // plan an exit path but it can be the case that we are currently planning an
+    // exit path, thus we include the others
+    const uint t_max_to_check = std::max({time_lb, t0 + dt_max_vel, TP.A.getT()});
+    // establish time at which the goal is free, and stays free
+    const uint t_earliest_feas = get_earliest_feasible_time(
+        TP, q1, t_max_to_check, std::max({time_lb, t0 + dt_max_vel}));
 
-  if (TP.A.prePlannedFrames.N != 0){
-    planner.prePlannedFrames = TP.A.prePlannedFrames;
-    planner.tPrePlanned = TP.A.tPrePlanned;
-  }
+    spdlog::info("t_earliest_feas {}", t_earliest_feas);
+    spdlog::info("last anim time {}", TP.A.getT());
+    // std::cout << "t_earliest_feas " << t_earliest_feas << std::endl;
+    // std::cout << "last anim time " << TP.A.getT() << std::endl;
 
-  double total_rrt_time = 0;
-  double total_nn_time = 0;
-  double total_coll_time = 0;
-
-  const uint max_delta = 10;
-  const uint max_iter = 10;
-  TimedPath timedPath({}, {});
-  for (uint i = 0; i < max_iter; ++i) {
-    const uint time_ub = t_earliest_feas + max_delta * (i);
-
-    spdlog::info("RRT iteration {}, upper bound time {}", i, time_ub);
-    if (time_ub_prev_found > 0 && time_ub >= uint(time_ub_prev_found)) {
-      spdlog::info("Aborting bc. faster path found");
-      break;
-    }
-
-    const auto rrt_start_time = std::chrono::high_resolution_clock::now();
-    auto res = planner.plan(q0, t0, q1, t_earliest_feas, time_ub);
-    const auto rrt_end_time = std::chrono::high_resolution_clock::now();
-    const auto rrt_duration =
-        std::chrono::duration_cast<std::chrono::microseconds>(rrt_end_time -
-                                                              rrt_start_time)
-            .count();
-
-    total_rrt_time += rrt_duration;
-    total_coll_time += planner.edge_checking_time_us;
-    total_nn_time += planner.nn_time_us;
-
-    if (res.time.N != 0) {
-      timedPath = res;
-      break;
-    }
-  }
-
-  if (timedPath.time.N == 0) {
-    /*TP.A.setToTime(TP.C, t0);
-    TP.C.setJointState(q0);
-    TP.C.watch(true);
-
-    TP.A.setToTime(TP.C, t_earliest_feas);
-    TP.C.setJointState(q1);
-    TP.C.watch(true);
-
-    for (uint i=0; i<A.getT(); ++i){
-      std::cout << i << std::endl;
-      TP.A.setToTime(TP.C, i);
+    if (false) {
+      TP.A.setToTime(TP.C, TP.A.getT());
       TP.C.setJointState(q1);
       TP.C.watch(true);
-    }*/
-    TaskPart tp;
-    tp.stats.rrt_plan_time = total_rrt_time;
-    tp.stats.rrt_nn_time = total_nn_time;
-    tp.stats.rrt_coll_time = total_coll_time;
-
-    return tp;
-  }
-
-  // std::cout << t0 << std::endl;
-  // std::cout << timedPath.time(timedPath.time.N - 1) << std::endl;
-
-  // resample
-  const uint N = std::ceil(timedPath.time(timedPath.time.N - 1) - t0) + 1;
-  arr t(N);
-  for (uint i = 0; i < t.N; ++i) {
-    t(i) = i + t0;
-  }
-
-  // std::cout << timedPath.time(-1) << " " <<  t(0) << " " << t(t.N-1) << std::endl;
-
-  const arr path = timedPath.resample(t, TP.C);
-
-  {
-    const double max_speed = get_max_speed(path);
-    spdlog::info("RRT maximum speed after resampling {}", max_speed);
-  }
-  // std::cout << path[-1] << std::endl;
-  // std::cout << timedPath.path[-1] << std::endl;
-  // std::cout << q1 << std::endl;
-
-  // check if resampled path is still fine
-  for (uint i = 0; i < t.N; ++i) {
-    const auto res = TP.query(path[i], t(i));
-    if (!res->isFeasible) {
-      spdlog::error("resampled path is not feasible! This should not happen.");
-      start_res->writeDetails(cout, TP.C);
-
-      // TP.A.setToTime(TP.C, t0);
-      // TP.C.setJointState(q0);
-      // TP.C.watch(true);
-
-      // TaskPart tp;
-      // tp.stats.rrt_plan_time = total_rrt_time;
-      // tp.stats.rrt_nn_time = total_nn_time;
-      // tp.stats.rrt_coll_time = total_coll_time;
-
-      // return tp;
     }
-  }
 
-  // shortcutting
-  // TODO: add timing
-  const auto shortcut_start_time = std::chrono::high_resolution_clock::now();
-  const bool should_shortcut = rai::getParameter<bool>("shortcutting", true);
+    // run once without upper bound
+    // auto res_check_feasibility = planner.plan(q0, t0, q1, t_earliest_feas);
 
-  arr new_path = path;
-  if (should_shortcut && path.d0 > 2){
-    spdlog::info("Running shortcutter");
-    // for (uint i = 0; i < path.d0; ++i) {
-    //   const auto res = TP.query(path[i], t(i));
-    //   std::cout << "checking at time " << t(i) << std::endl;
-    //   if (t(i) == 70){
-    //     TP.C.watch(true);
-    //   }
-    //   if (!res->isFeasible) {
-    //     // std::cout << i << std::endl;
-    //     // TP.C.watch(true);
-    //     spdlog::warn("pre shortcut path infeasible, penetration {} at time {} "
-    //                  "(timestep {} / {})",
-    //                  min(res->coll_y), t(i), i, new_path.d0);
-    //     res->writeDetails(std::cout, TP.C);
-    //     break;
-    //   }
-    // }
+    if (TP.A.prePlannedFrames.N != 0){
+      planner.prePlannedFrames = TP.A.prePlannedFrames;
+      planner.tPrePlanned = TP.A.tPrePlanned;
+    }
 
-    new_path = partial_spacetime_shortcut(TP, path, t0);
+    double total_rrt_time = 0;
+    double total_nn_time = 0;
+    double total_coll_time = 0;
 
-    for (uint i = 0; i < new_path.d0; ++i) {
-      const auto res = TP.query(new_path[i], t(i));
-      if (!res->isFeasible) {
-        // std::cout << i << std::endl;
-        // TP.C.watch(true);
-        res->writeDetails(std::cout, TP.C);
-        if (res->coll_y.N > 0){
-          spdlog::warn("shortcut path infeasible, penetration {} at time {} "
-                       "(timestep {} / {})",
-                       min(res->coll_y), t(i), i, new_path.d0);
-        }
+    const uint max_delta = 10;
+    const uint max_iter = 10;
+    TimedPath timedPath({}, {});
+    for (uint i = 0; i < max_iter; ++i) {
+      const uint time_ub = t_earliest_feas + max_delta * (i);
+
+      spdlog::info("RRT iteration {}, upper bound time {}", i, time_ub);
+      if (time_ub_prev_found > 0 && time_ub >= uint(time_ub_prev_found)) {
+        spdlog::info("Aborting bc. faster path found");
+        break;
+      }
+
+      const auto rrt_start_time = std::chrono::high_resolution_clock::now();
+      auto res = planner.plan(q0, t0, q1, time_ub);
+      
+      const auto rrt_end_time = std::chrono::high_resolution_clock::now();
+      const auto rrt_duration =
+          std::chrono::duration_cast<std::chrono::microseconds>(rrt_end_time -
+                                                                rrt_start_time)
+              .count();
+
+      total_rrt_time += rrt_duration;
+      total_coll_time += planner.edge_checking_time_us;
+      total_nn_time += planner.nn_time_us;
+
+      if (res.time.N != 0) {
+        timedPath = res;
         break;
       }
     }
 
-    const double max_speed = get_max_speed(new_path);
-    spdlog::info("RRT maximum speed after shortcutting {}", max_speed);
-  }
-  // const arr new_path = path;
+    if (timedPath.time.N == 0) {
+      TaskPart tp;
+      tp.stats.rrt_plan_time = total_rrt_time;
+      tp.stats.rrt_nn_time = total_nn_time;
+      tp.stats.rrt_coll_time = total_coll_time;
 
-  const auto shortcut_end_time = std::chrono::high_resolution_clock::now();
-  const auto shortcut_duration =
-      std::chrono::duration_cast<std::chrono::microseconds>(shortcut_end_time -
-                                                            shortcut_start_time)
-          .count();
-
-  // std::cout << new_path[-1] << "\n" << q1 << std::endl;
-
-  // smoothing and imposing bunch of constraints
-  const auto smoothing_start_time = std::chrono::high_resolution_clock::now();
-  
-  // TP.C.fcl()->stopEarly = false;
-
-  const bool should_smooth = rai::getParameter<bool>("smoothing", false);
-
-  arr smooth_path = new_path * 1.;
-  if (should_smooth){
-    spdlog::info("Running smoother");
-    smooth_path = smoothing(TP.A, TP.C, t, new_path, prefix.prefix);
-    
-    if (smooth_path.N == 0){
-      spdlog::info("Smoothing failed.");
-      smooth_path = new_path;
+      return tp;
     }
-    else{
-      for (uint i = 0; i < smooth_path.d0; ++i) {
-        const auto res = TP.query(smooth_path[i], t(i));
-        // if (!res->isFeasible && res->coll_y.N > 0 && min(res->coll_y) < -0.05) {
-        // if (i < smooth_path.d0 -1){
-        //   if (absMax(smooth_path[i] - smooth_path[i+1]) > prefix.vmax){
-        //     spdlog::warn("smoothed path too fast {} vs {}.",
-        //                  absMax(smooth_path[i] - smooth_path[i + 1]),
-        //                  prefix.vmax);
-        //     smooth_path = new_path;
-        //     break;
-        //   }
-        // }
-        // std::cout << "checking at time " << t(i) << std::endl;
-        if (!res->isFeasible) {
-          // std::cout << i << std::endl;
-          // TP.C.watch(true);
-          spdlog::warn(
-              "smoothed path infeasible, penetration {} at time {} (timestep {} / {})",
-              min(res->coll_y), t(i), i, smooth_path.d0);
-          res->writeDetails(std::cout, TP.C);
 
-          smooth_path = new_path;
-          break;
-        }
+    // resample
+    const uint N = std::ceil(timedPath.time(timedPath.time.N - 1) - t0) + 1;
+    arr t(N);
+    for (uint i = 0; i < t.N; ++i) {
+      t(i) = i + t0;
+    }
+
+    // std::cout << timedPath.time(-1) << " " <<  t(0) << " " << t(t.N-1) << std::endl;
+
+    const arr path = timedPath.resample(t, TP.C);
+
+    {
+      const double max_speed = get_max_speed(path);
+      spdlog::info("RRT maximum speed after resampling {}", max_speed);
+    }
+
+    // check if resampled path is still fine
+    for (uint i = 0; i < t.N; ++i) {
+      const auto res = TP.query(path[i], t(i));
+      if (!res->isFeasible) {
+        spdlog::error("resampled path is not feasible! This should not happen.");
+        start_res->writeDetails(cout, TP.C);
       }
     }
 
+    // shortcutting
+    // TODO: add timing
+    const auto shortcut_start_time = std::chrono::high_resolution_clock::now();
+    const bool should_shortcut = rai::getParameter<bool>("shortcutting", true);
+
+    arr new_path = path;
+    if (should_shortcut && path.d0 > 2){
+      spdlog::info("Running shortcutter");
+      // for (uint i = 0; i < path.d0; ++i) {
+      //   const auto res = TP.query(path[i], t(i));
+      //   std::cout << "checking at time " << t(i) << std::endl;
+      //   if (t(i) == 70){
+      //     TP.C.watch(true);
+      //   }
+      //   if (!res->isFeasible) {
+      //     // std::cout << i << std::endl;
+      //     // TP.C.watch(true);
+      //     spdlog::warn("pre shortcut path infeasible, penetration {} at time {} "
+      //                  "(timestep {} / {})",
+      //                  min(res->coll_y), t(i), i, new_path.d0);
+      //     res->writeDetails(std::cout, TP.C);
+      //     break;
+      //   }
+      // }
+
+      new_path = partial_spacetime_shortcut(TP, path, t0);
+
+      for (uint i = 0; i < new_path.d0; ++i) {
+        const auto res = TP.query(new_path[i], t(i));
+        if (!res->isFeasible) {
+          // std::cout << i << std::endl;
+          // TP.C.watch(true);
+          res->writeDetails(std::cout, TP.C);
+          if (res->coll_y.N > 0){
+            spdlog::warn("shortcut path infeasible, penetration {} at time {} "
+                        "(timestep {} / {})",
+                        min(res->coll_y), t(i), i, new_path.d0);
+          }
+          break;
+        }
+      }
+
+      const double max_speed = get_max_speed(new_path);
+      spdlog::info("RRT maximum speed after shortcutting {}", max_speed);
+    }
+    // const arr new_path = path;
+
+    const auto shortcut_end_time = std::chrono::high_resolution_clock::now();
+    const auto shortcut_duration =
+        std::chrono::duration_cast<std::chrono::microseconds>(shortcut_end_time -
+                                                              shortcut_start_time)
+            .count();
+
+    // std::cout << new_path[-1] << "\n" << q1 << std::endl;
+
+    // smoothing and imposing bunch of constraints
+    const auto smoothing_start_time = std::chrono::high_resolution_clock::now();
+    
+    // TP.C.fcl()->stopEarly = false;
+
+    const bool should_smooth = rai::getParameter<bool>("smoothing", false);
+
+    arr smooth_path = new_path * 1.;
+    if (should_smooth){
+      spdlog::info("Running smoother");
+      smooth_path = smoothing(TP.A, TP.C, t, new_path, prefix.prefix);
+      
+      if (smooth_path.N == 0){
+        spdlog::info("Smoothing failed.");
+        smooth_path = new_path;
+      }
+      else{
+        for (uint i = 0; i < smooth_path.d0; ++i) {
+          const auto res = TP.query(smooth_path[i], t(i));
+          // if (!res->isFeasible && res->coll_y.N > 0 && min(res->coll_y) < -0.05) {
+          // if (i < smooth_path.d0 -1){
+          //   if (absMax(smooth_path[i] - smooth_path[i+1]) > prefix.vmax){
+          //     spdlog::warn("smoothed path too fast {} vs {}.",
+          //                  absMax(smooth_path[i] - smooth_path[i + 1]),
+          //                  prefix.vmax);
+          //     smooth_path = new_path;
+          //     break;
+          //   }
+          // }
+          // std::cout << "checking at time " << t(i) << std::endl;
+          if (!res->isFeasible) {
+            // std::cout << i << std::endl;
+            // TP.C.watch(true);
+            spdlog::warn(
+                "smoothed path infeasible, penetration {} at time {} (timestep {} / {})",
+                min(res->coll_y), t(i), i, smooth_path.d0);
+            res->writeDetails(std::cout, TP.C);
+
+            smooth_path = new_path;
+            break;
+          }
+        }
+      }
+
+      const double max_speed = get_max_speed(smooth_path);
+      spdlog::info("RRT maximum speed after smoothing {}", max_speed);
+
+    }
+    // TP.C.fcl()->stopEarly = true;
+    const auto smoothing_end_time = std::chrono::high_resolution_clock::now();
+    const auto smoothing_duration =
+        std::chrono::duration_cast<std::chrono::microseconds>(smoothing_end_time -
+                                                              smoothing_start_time)
+            .count();
+
+    // const arr smooth_path = new_path;
+
     const double max_speed = get_max_speed(smooth_path);
-    spdlog::info("RRT maximum speed after smoothing {}", max_speed);
+    spdlog::info("RRT maximum speed {}", max_speed);
+    spdlog::info("RRT final time at {}", t(-1));
+    
+    TaskPart tp(t, smooth_path);
+    tp.stats.rrt_plan_time = total_rrt_time;
+    tp.stats.rrt_nn_time = total_nn_time;
+    tp.stats.rrt_coll_time = total_coll_time;
+    tp.stats.rrt_shortcut_time = shortcut_duration;
+    tp.stats.rrt_smoothing_time = smoothing_duration;
 
+    return tp;
   }
-  // TP.C.fcl()->stopEarly = true;
-  const auto smoothing_end_time = std::chrono::high_resolution_clock::now();
-  const auto smoothing_duration =
-      std::chrono::duration_cast<std::chrono::microseconds>(smoothing_end_time -
-                                                            smoothing_start_time)
-          .count();
 
-  // const arr smooth_path = new_path;
+  else
+  {
+    PathFinder_RRT_Time planner(TP);
+    planner.vmax = prefix.vmax;
+    planner.lambda = 0.5;
+    planner.maxIter = 500;
+    planner.maxInitialSamples = 10;
+    // planner.disp = true;
+    // planner.optimize = optimize;
+    // planner.step_time = 5;
+    planner.maxIter = 500;
+    planner.goalSampleProbability = 0.9; // 0.9
+    const bool informed_sampling = rai::getParameter<bool>("informed_sampling", true);
+    planner.informed_sampling = informed_sampling;
 
-  const double max_speed = get_max_speed(smooth_path);
-  spdlog::info("RRT maximum speed {}", max_speed);
-  spdlog::info("RRT final time at {}", t(-1));
-  
-  TaskPart tp(t, smooth_path);
-  tp.stats.rrt_plan_time = total_rrt_time;
-  tp.stats.rrt_nn_time = total_nn_time;
-  tp.stats.rrt_coll_time = total_coll_time;
-  tp.stats.rrt_shortcut_time = shortcut_duration;
-  tp.stats.rrt_smoothing_time = smoothing_duration;
+     const uint dt_max_vel = uint(std::ceil(absMax(q0 - q1) / prefix.vmax));
+      // const uint dt_max_vel = uint(std::ceil(length(q0 - q1) / prefix.vmax));
 
-  return tp;
+      // the goal should always be free at the end of the animation, as we always
+      // plan an exit path but it can be the case that we are currently planning an
+      // exit path, thus we include the others
+      const uint t_max_to_check = std::max({time_lb, t0 + dt_max_vel, TP.A.getT()});
+      // establish time at which the goal is free, and stays free
+      const uint t_earliest_feas = get_earliest_feasible_time(
+          TP, q1, t_max_to_check, std::max({time_lb, t0 + dt_max_vel}));
+
+      spdlog::info("t_earliest_feas {}", t_earliest_feas);
+      spdlog::info("last anim time {}", TP.A.getT());
+      // std::cout << "t_earliest_feas " << t_earliest_feas << std::endl;
+      // std::cout << "last anim time " << TP.A.getT() << std::endl;
+
+      if (false) {
+        TP.A.setToTime(TP.C, TP.A.getT());
+        TP.C.setJointState(q1);
+        TP.C.watch(true);
+      }
+
+      // run once without upper bound
+      // auto res_check_feasibility = planner.plan(q0, t0, q1, t_earliest_feas);
+
+      if (TP.A.prePlannedFrames.N != 0){
+        planner.prePlannedFrames = TP.A.prePlannedFrames;
+        planner.tPrePlanned = TP.A.tPrePlanned;
+      }
+
+      double total_rrt_time = 0;
+      double total_nn_time = 0;
+      double total_coll_time = 0;
+
+      const uint max_delta = 10;
+      const uint max_iter = 10;
+      TimedPath timedPath({}, {});
+      for (uint i = 0; i < max_iter; ++i) {
+        const uint time_ub = t_earliest_feas + max_delta * (i);
+
+        spdlog::info("RRT iteration {}, upper bound time {}", i, time_ub);
+        if (time_ub_prev_found > 0 && time_ub >= uint(time_ub_prev_found)) {
+          spdlog::info("Aborting bc. faster path found");
+          break;
+        }
+
+        const auto rrt_start_time = std::chrono::high_resolution_clock::now();
+        auto res = planner.plan(q0, t0, q1, t_earliest_feas, time_ub);
+        
+        const auto rrt_end_time = std::chrono::high_resolution_clock::now();
+        const auto rrt_duration =
+            std::chrono::duration_cast<std::chrono::microseconds>(rrt_end_time -
+                                                                  rrt_start_time)
+                .count();
+
+        total_rrt_time += rrt_duration;
+        total_coll_time += planner.edge_checking_time_us;
+        total_nn_time += planner.nn_time_us;
+
+        if (res.time.N != 0) {
+          timedPath = res;
+          break;
+        }
+      }
+
+      if (timedPath.time.N == 0) {
+        TaskPart tp;
+        tp.stats.rrt_plan_time = total_rrt_time;
+        tp.stats.rrt_nn_time = total_nn_time;
+        tp.stats.rrt_coll_time = total_coll_time;
+
+        return tp;
+      }
+
+      // resample
+      const uint N = std::ceil(timedPath.time(timedPath.time.N - 1) - t0) + 1;
+      arr t(N);
+      for (uint i = 0; i < t.N; ++i) {
+        t(i) = i + t0;
+      }
+
+      // std::cout << timedPath.time(-1) << " " <<  t(0) << " " << t(t.N-1) << std::endl;
+
+      const arr path = timedPath.resample(t, TP.C);
+
+      {
+        const double max_speed = get_max_speed(path);
+        spdlog::info("RRT maximum speed after resampling {}", max_speed);
+      }
+
+      // check if resampled path is still fine
+      for (uint i = 0; i < t.N; ++i) {
+        const auto res = TP.query(path[i], t(i));
+        if (!res->isFeasible) {
+          spdlog::error("resampled path is not feasible! This should not happen.");
+          start_res->writeDetails(cout, TP.C);
+        }
+      }
+
+      // shortcutting
+      // TODO: add timing
+      const auto shortcut_start_time = std::chrono::high_resolution_clock::now();
+      const bool should_shortcut = rai::getParameter<bool>("shortcutting", true);
+
+      arr new_path = path;
+      if (should_shortcut && path.d0 > 2){
+        spdlog::info("Running shortcutter");
+        // for (uint i = 0; i < path.d0; ++i) {
+        //   const auto res = TP.query(path[i], t(i));
+        //   std::cout << "checking at time " << t(i) << std::endl;
+        //   if (t(i) == 70){
+        //     TP.C.watch(true);
+        //   }
+        //   if (!res->isFeasible) {
+        //     // std::cout << i << std::endl;
+        //     // TP.C.watch(true);
+        //     spdlog::warn("pre shortcut path infeasible, penetration {} at time {} "
+        //                  "(timestep {} / {})",
+        //                  min(res->coll_y), t(i), i, new_path.d0);
+        //     res->writeDetails(std::cout, TP.C);
+        //     break;
+        //   }
+        // }
+
+        new_path = partial_spacetime_shortcut(TP, path, t0);
+
+        for (uint i = 0; i < new_path.d0; ++i) {
+          const auto res = TP.query(new_path[i], t(i));
+          if (!res->isFeasible) {
+            // std::cout << i << std::endl;
+            // TP.C.watch(true);
+            res->writeDetails(std::cout, TP.C);
+            if (res->coll_y.N > 0){
+              spdlog::warn("shortcut path infeasible, penetration {} at time {} "
+                          "(timestep {} / {})",
+                          min(res->coll_y), t(i), i, new_path.d0);
+            }
+            break;
+          }
+        }
+
+        const double max_speed = get_max_speed(new_path);
+        spdlog::info("RRT maximum speed after shortcutting {}", max_speed);
+      }
+      // const arr new_path = path;
+
+      const auto shortcut_end_time = std::chrono::high_resolution_clock::now();
+      const auto shortcut_duration =
+          std::chrono::duration_cast<std::chrono::microseconds>(shortcut_end_time -
+                                                                shortcut_start_time)
+              .count();
+
+      // std::cout << new_path[-1] << "\n" << q1 << std::endl;
+
+      // smoothing and imposing bunch of constraints
+      const auto smoothing_start_time = std::chrono::high_resolution_clock::now();
+      
+      // TP.C.fcl()->stopEarly = false;
+
+      const bool should_smooth = rai::getParameter<bool>("smoothing", false);
+
+      arr smooth_path = new_path * 1.;
+      if (should_smooth){
+        spdlog::info("Running smoother");
+        smooth_path = smoothing(TP.A, TP.C, t, new_path, prefix.prefix);
+        
+        if (smooth_path.N == 0){
+          spdlog::info("Smoothing failed.");
+          smooth_path = new_path;
+        }
+        else{
+          for (uint i = 0; i < smooth_path.d0; ++i) {
+            const auto res = TP.query(smooth_path[i], t(i));
+            // if (!res->isFeasible && res->coll_y.N > 0 && min(res->coll_y) < -0.05) {
+            // if (i < smooth_path.d0 -1){
+            //   if (absMax(smooth_path[i] - smooth_path[i+1]) > prefix.vmax){
+            //     spdlog::warn("smoothed path too fast {} vs {}.",
+            //                  absMax(smooth_path[i] - smooth_path[i + 1]),
+            //                  prefix.vmax);
+            //     smooth_path = new_path;
+            //     break;
+            //   }
+            // }
+            // std::cout << "checking at time " << t(i) << std::endl;
+            if (!res->isFeasible) {
+              // std::cout << i << std::endl;
+              // TP.C.watch(true);
+              spdlog::warn(
+                  "smoothed path infeasible, penetration {} at time {} (timestep {} / {})",
+                  min(res->coll_y), t(i), i, smooth_path.d0);
+              res->writeDetails(std::cout, TP.C);
+
+              smooth_path = new_path;
+              break;
+            }
+          }
+        }
+
+        const double max_speed = get_max_speed(smooth_path);
+        spdlog::info("RRT maximum speed after smoothing {}", max_speed);
+
+      }
+      // TP.C.fcl()->stopEarly = true;
+      const auto smoothing_end_time = std::chrono::high_resolution_clock::now();
+      const auto smoothing_duration =
+          std::chrono::duration_cast<std::chrono::microseconds>(smoothing_end_time -
+                                                                smoothing_start_time)
+              .count();
+
+      // const arr smooth_path = new_path;
+
+      const double max_speed = get_max_speed(smooth_path);
+      spdlog::info("RRT maximum speed {}", max_speed);
+      spdlog::info("RRT final time at {}", t(-1));
+      
+      TaskPart tp(t, smooth_path);
+      tp.stats.rrt_plan_time = total_rrt_time;
+      tp.stats.rrt_nn_time = total_nn_time;
+      tp.stats.rrt_coll_time = total_coll_time;
+      tp.stats.rrt_shortcut_time = shortcut_duration;
+      tp.stats.rrt_smoothing_time = smoothing_duration;
+
+      return tp;
+      }
 }
 
 // policy should have other inputs:
