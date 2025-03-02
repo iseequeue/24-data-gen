@@ -11,7 +11,7 @@ RAI_TESTS = 1
 
 DEPEND = Algo Control KOMO Core Geo Kin Gui Optim LGP Logic Manip Control PlanningSubroutines
 
-#OPTIM = debug
+# OPTIM = debug
 
 LIBS += -lspdlog -lfmt -lstdc++fs -lfcl
 LPATHS += -L/usr/lib/x86_64-linux-gnu/libspdlog.so
