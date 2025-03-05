@@ -487,7 +487,7 @@ TaskPart plan_in_animation_rrt(TimedConfigurationProblem &TP,
 
   if (sipp)
   {
-    PathFinder_SIRRT_Time planner(TP);
+    
 
 
     const uint dt_max_vel = uint(std::ceil(absMax(q0 - q1) / prefix.vmax));
@@ -515,10 +515,7 @@ TaskPart plan_in_animation_rrt(TimedConfigurationProblem &TP,
     // run once without upper bound
     // auto res_check_feasibility = planner.plan(q0, t0, q1, t_earliest_feas);
 
-    if (TP.A.prePlannedFrames.N != 0){
-      planner.prePlannedFrames = TP.A.prePlannedFrames;
-      planner.tPrePlanned = TP.A.tPrePlanned;
-    }
+ 
 
     double total_rrt_time = 0;
     double total_nn_time = 0;
@@ -537,6 +534,11 @@ TaskPart plan_in_animation_rrt(TimedConfigurationProblem &TP,
       }
 
       const auto rrt_start_time = std::chrono::high_resolution_clock::now();
+      PathFinder_SIRRT_Time planner(TP);
+      if (TP.A.prePlannedFrames.N != 0){
+      planner.prePlannedFrames = TP.A.prePlannedFrames;
+      planner.tPrePlanned = TP.A.tPrePlanned;
+      }
       auto res = planner.plan(q0, t0, q1, time_ub);
       
       const auto rrt_end_time = std::chrono::high_resolution_clock::now();
@@ -563,6 +565,8 @@ TaskPart plan_in_animation_rrt(TimedConfigurationProblem &TP,
 
       return tp;
     }
+    //HERE STAAAAAART
+    
 
     // resample
     const uint N = std::ceil(timedPath.time(timedPath.time.N - 1) - t0) + 1;
@@ -704,7 +708,7 @@ TaskPart plan_in_animation_rrt(TimedConfigurationProblem &TP,
     const double max_speed = get_max_speed(smooth_path);
     spdlog::info("RRT maximum speed {}", max_speed);
     spdlog::info("RRT final time at {}", t(-1));
-    
+    //// END    
     TaskPart tp(t, smooth_path);
     tp.stats.rrt_plan_time = total_rrt_time;
     tp.stats.rrt_nn_time = total_nn_time;
