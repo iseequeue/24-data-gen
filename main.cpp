@@ -230,7 +230,7 @@ OrderedTaskSequence make_pick_pick_seq(const std::vector<Robot> &robots, const u
 }
 
 RobotTaskPoseMap compute_keyframes(rai::Configuration &C, const std::vector<Robot> &robots,
-                  const bool use_picks = true, const bool use_handovers = true,
+                  const bool use_picks = true, const bool use_handovers = false, // changed
                   const bool use_repeated_picks = true,
                   const bool attempt_all_grasp_directions = false) {
   RobotTaskPoseMap robot_task_pose_mapping;
@@ -466,28 +466,28 @@ int main(int argc, char **argv) {
       "mode", "two_finger_keyframes_test"); // mode
 
   const rai::String stippling_scenario =
-      rai::getParameter<rai::String>("stippling_pts", "random"); // scenario
+      rai::getParameter<rai::String>("stippling_pts", ""); // scenario
 
   const rai::String gripper =
-      rai::getParameter<rai::String>("gripper", "two_finger"); // which gripper
+      rai::getParameter<rai::String>("gripper", ""); // which gripper
 
   const rai::String scene_path = rai::getParameter<rai::String>(
-      "scene_path", "./in/scenes/floor.g"); // base_scene
+      "scene_path", ""); // base_scene
 
   const rai::String obstacle_path =
       rai::getParameter<rai::String>("obstacle_path", ""); // obstacles
 
   const rai::String obj_path =
-      rai::getParameter<rai::String>("obj_path", "random"); // objects
+      rai::getParameter<rai::String>("obj_path", ""); // objects
 
   const uint num_objects_for_env =
       rai::getParameter<double>("objects", 5); // number of objects
 
   const rai::String robot_path = rai::getParameter<rai::String>(
-      "robot_path", "./in/envs/two_opposite.json"); // robot placement and pose
+      "robot_path", ""); // robot placement and pose
 
   const rai::String sequence_path = rai::getParameter<rai::String>(
-      "sequence_path", "./in/sequences/test.json"); // sequence
+      "sequence_path", ""); // sequence
 
   const rai::String output_path =
       rai::getParameter<rai::String>("output_path", "./out/");
@@ -498,12 +498,12 @@ int main(int argc, char **argv) {
 
   const bool use_picks = rai::getParameter<bool>("use_simple_picks", true);
 
-  const bool use_handovers = rai::getParameter<bool>("use_handovers", true);
+  const bool use_handovers = rai::getParameter<bool>("use_handovers", false); //changed
 
   const bool use_repeated_picks =
       rai::getParameter<bool>("use_repeated_picks", true);
 
-  const uint max_attempts = rai::getParameter<double>("max_attempts", 1000);
+  const uint max_attempts = rai::getParameter<double>("max_attempts", 1);
 
   const bool randomize_mode_switch_duration =
       rai::getParameter<bool>("randomize_mode_switch_duration", false);
