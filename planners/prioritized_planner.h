@@ -1,3 +1,4 @@
+
 // #pragma once
 
 // #include "spdlog/spdlog.h"
@@ -2344,9 +2345,6 @@
 //       C, rtpm, sequence, 0, paths, home_poses, best_makespan_so_far,
 //       early_stopping);
 // }
-
-
-
 #pragma once
 
 #include "spdlog/spdlog.h"
@@ -2369,6 +2367,10 @@
 #include "common/env_util.h"
 #include "common/config.h"
 
+#include "json/json.h"
+#include <fstream>
+using json = nlohmann::ordered_json;
+
 struct PlannerOptions{
   bool early_stopping{false};
 };
@@ -2381,6 +2383,19 @@ struct PathPlannerOptions {
   bool shortcut{true};
   bool smooth{true};
 };
+
+std::string generate_filename() {
+  auto now = std::chrono::system_clock::now();
+  auto now_time_t = std::chrono::system_clock::to_time_t(now);
+  auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count() % 1000;
+
+  std::tm now_tm = *std::localtime(&now_time_t);
+
+  std::ostringstream oss;
+  oss << std::put_time(&now_tm, "robot_path_%Y%m%d_%H%M%S") << "_" << std::setfill('0') << std::setw(3) << now_ms << ".json";
+  return oss.str();
+}
+
 
 rai::Array<rai::KinematicSwitch>
 switches_from_skeleton(const Skeleton &S, const rai::Configuration &C) {
@@ -2840,8 +2855,8 @@ TaskPart plan_in_animation_rrt(TimedConfigurationProblem &TP,
     
 
 
-    const uint dt_max_vel = uint(std::ceil(absMax(q0 - q1) / prefix.vmax));
-    // const uint dt_max_vel = uint(std::ceil(length(q0 - q1) / prefix.vmax));
+    // const uint dt_max_vel = uint(std::ceil(absMax(q0 - q1) / prefix.vmax));
+    const uint dt_max_vel = uint(std::ceil((length(q0 - q1)) / prefix.vmax));
 
     // the goal should always be free at the end of the animation, as we always
     // plan an exit path but it can be the case that we are currently planning an
@@ -2875,17 +2890,21 @@ TaskPart plan_in_animation_rrt(TimedConfigurationProblem &TP,
     double total_nn_time = 0;
     double total_coll_time = 0;
 
-    const uint max_delta = 10;
+    const uint max_delta = 20;
     const uint max_iter = 10;
     TimedPath timedPath({}, {});
     for (uint i = 0; i < max_iter; ++i) {
-      const uint time_ub = t_earliest_feas + max_delta * (i);
+      const uint time_ub = t_earliest_feas + max_delta * (i+1) + 50;
 
       spdlog::info("RRT iteration {}, upper bound time {}", i, time_ub);
       if (time_ub_prev_found > 0 && time_ub >= uint(time_ub_prev_found)) {
         spdlog::info("Aborting bc. faster path found");
         break;
       }
+      // planner.TP.min_time = t0;
+      // planner.TP.max_time = time_ub; 
+      // planner.TP.init_safe_interval_collisison_check(q0,t0,time_ub);
+
 
       const auto rrt_start_time = std::chrono::high_resolution_clock::now();
       
@@ -2893,13 +2912,38 @@ TaskPart plan_in_animation_rrt(TimedConfigurationProblem &TP,
       
       const auto rrt_end_time = std::chrono::high_resolution_clock::now();
       const auto rrt_duration =
-          std::chrono::duration_cast<std::chrono::microseconds>(rrt_end_time -
+          std::chrono::duration_cast<std::chrono::milliseconds>(rrt_end_time -
                                                                 rrt_start_time)
               .count();
 
       total_rrt_time += rrt_duration;
-      total_coll_time += planner.edge_checking_time_us;
-      total_nn_time += planner.nn_time_us;
+
+      {
+          json j;
+          j["name"] = prefix.prefix;
+          j["type"] = prefix.type;
+          j["start_conf"] = q0;
+          j["goal_conf"] = q1;
+          j["start_time"] = t0;  
+          j["success"] = (res.time.N != 0) ? 1:0;   
+  
+          j["planning_time"] = rrt_duration;
+          j["init_time"] = planner.get_init_time();
+          json json_path = json::array();
+          for(uint i = 0; i < res.path.d0; i++) 
+          {
+            std::vector<double> q_i(res.path[i].begin(), res.path[i].end()); 
+            double t_i = res.time(i);
+            json_path.push_back({{"q", q_i}, {"t", t_i}});
+          }
+          j["path"] = json_path;
+  
+        std::string fln = generate_filename();
+          std::ofstream o("/home/alex/multitask/24-data-gen/log/" + fln);
+          o << std::setw(4) << j << std::endl;
+          o.close();  
+          std::cout << "Путь робота записан в файл " <<  fln << std::endl;
+        }
 
       if (res.time.N != 0) {
         timedPath = res;
@@ -2915,7 +2959,7 @@ TaskPart plan_in_animation_rrt(TimedConfigurationProblem &TP,
 
       return tp;
     }
-    //HERE STAAAAAART
+    //========================================================================================================================
     
 
     // resample
@@ -3084,7 +3128,9 @@ TaskPart plan_in_animation_rrt(TimedConfigurationProblem &TP,
     const bool informed_sampling = rai::getParameter<bool>("informed_sampling", true);
     planner.informed_sampling = informed_sampling;
 
-     const uint dt_max_vel = uint(std::ceil(absMax(q0 - q1) / prefix.vmax));
+    //  const uint dt_max_vel = uint(std::ceil(absMax(q0 - q1) / prefix.vmax));
+     const uint dt_max_vel = uint(std::ceil((length(q0 - q1)) / prefix.vmax));
+
       // const uint dt_max_vel = uint(std::ceil(length(q0 - q1) / prefix.vmax));
 
       // the goal should always be free at the end of the animation, as we always
@@ -3118,11 +3164,11 @@ TaskPart plan_in_animation_rrt(TimedConfigurationProblem &TP,
       double total_nn_time = 0;
       double total_coll_time = 0;
 
-      const uint max_delta = 10;
+      const uint max_delta = 20;
       const uint max_iter = 10;
       TimedPath timedPath({}, {});
       for (uint i = 0; i < max_iter; ++i) {
-        const uint time_ub = t_earliest_feas + max_delta * (i);
+        const uint time_ub = t_earliest_feas + max_delta * (i+1) + 50;
 
         spdlog::info("RRT iteration {}, upper bound time {}", i, time_ub);
         if (time_ub_prev_found > 0 && time_ub >= uint(time_ub_prev_found)) {
@@ -3135,13 +3181,39 @@ TaskPart plan_in_animation_rrt(TimedConfigurationProblem &TP,
         
         const auto rrt_end_time = std::chrono::high_resolution_clock::now();
         const auto rrt_duration =
-            std::chrono::duration_cast<std::chrono::microseconds>(rrt_end_time -
+            std::chrono::duration_cast<std::chrono::milliseconds>(rrt_end_time -
                                                                   rrt_start_time)
                 .count();
 
         total_rrt_time += rrt_duration;
         total_coll_time += planner.edge_checking_time_us;
         total_nn_time += planner.nn_time_us;
+
+        {
+          json j;
+          j["name"] = prefix.prefix;
+          j["type"] = prefix.type;
+          j["start_conf"] = q0;
+          j["goal_conf"] = q1;
+          j["start_time"] = t0;  
+          j["success"] = (res.time.N != 0) ? 1:0;   
+  
+          j["planning_time"] = rrt_duration;
+          json json_path = json::array();
+          for(uint i = 0; i < res.path.d0; i++) 
+          {
+            std::vector<double> q_i(res.path[i].begin(), res.path[i].end()); 
+            double t_i = res.time(i);
+            json_path.push_back({{"q", q_i}, {"t", t_i}});
+          }
+          j["path"] = json_path;
+  
+          std::string fln = generate_filename();
+          std::ofstream o("/home/alex/multitask/24-data-gen/log/" + fln);
+          o << std::setw(4) << j << std::endl;
+          o.close();  
+          std::cout << "Путь робота записан в файл " << fln << std::endl;
+        }
 
         if (res.time.N != 0) {
           timedPath = res;

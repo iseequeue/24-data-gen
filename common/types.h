@@ -4,6 +4,7 @@
 #include <vector>
 #include <Core/array.h>
 
+
 enum class PrimitiveType { pick, handover, go_to, joint_pick, pick_pick_1, pick_pick_2};
 
 // enum class ActionType { none, pick, place, handover, go_to };
