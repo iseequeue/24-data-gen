@@ -5,10 +5,12 @@ from typing import Dict
 from tqdm import tqdm
 import numpy as np
 import matplotlib.pyplot as plt
+from concurrent.futures import ProcessPoolExecutor
+NUM_CPUS = 126
 
 
 def validate_path(path):
-    if not os.path.exists(path):
+    if not os.path.exist(path):
         raise FileNotFoundError(f"File not found: {path}")
     
 def validate_data(data : Dict):
@@ -20,17 +22,8 @@ def validate_data(data : Dict):
     print("SUCCESS")
 
 
-directory = "/home/alex/multitask/24-data-gen/in/random"
-folders = [item for item in os.listdir(directory) if os.path.isdir(os.path.join(directory, item))]
-print(f"Папки {len(folders)}:", folders)
 
 
-def clear_dir(directory):
-    for filename in os.listdir(directory):
-            file_path = os.path.join(directory, filename)
-            if os.path.isfile(file_path):
-                os.remove(file_path)
-                print(f"Deleted: {file_path}")
 
 def get_num_obj(directory):
      with open(directory, 'r') as f:
@@ -61,14 +54,10 @@ def merge_robot_results(input_dir, output_file):
     try:
         with open(output_file, "w", encoding="utf-8") as f:
             json.dump(merged_data, f, indent=4, ensure_ascii=False)
-        print(f"Объединённый файл сохранён: {output_file}")
+        # print(f"Объединённый файл сохранён: {output_file}")
     except Exception as e:
         print(f"Ошибка при сохранении файла: {e}")
 
-# Пример использования
-input_directory = "/home/alex/multitask/24-data-gen/log"
-output_filename = "/home/alex/multitask/24-data-gen/result.json"
-merge_robot_results(input_directory, output_filename)
 
 def sort_data(input_file, output_file):
     with open(input_file, "r", encoding="utf-8") as f:
@@ -88,57 +77,211 @@ def sort_data(input_file, output_file):
     with open(output_file, "w", encoding="utf-8") as f:
         json.dump(robot_dict, f, indent=4, ensure_ascii=False)
 
+def process_sirrt(scene,folder,seed,args):
+    log_dir = f'log/{scene}/sirrt/{folder}/{seed}/'
+    os.makedirs(log_dir, exist_ok = False)
 
-scene = 'random'
+    command = [
+        './sipp.exe',
+        '-pnp',             'true',
+        '-mode',            'random_search',
+        '-seed',            str(seed),
+        '-robot_path',      args['robots'],
+        '-obj_path',        args['objects'],
+        '-attempt_komo',    'false',
+        '-display',         'false',
+        '-export_images',   'false',
+        '-log_dir',         "'"+log_dir+"'",
+        '-verbosity',       '0',
+        #'-scene_path',      args['scene'],
+        #'-obstacle_path',   args['obstacles']
+    ]
+    # validate_data(args)
+    if 'scene' in args:
+        command.append('-scene_path')
+        command.append(args['scene'])
+    if 'obstacles' in args:
+        command.append('-obstacle_path')
+        command.append(args['obstacles'])
+    subprocess.run(' '.join(command),shell=True,stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)   
 
-directory = "/home/alex/multitask/24-data-gen/log"
+    result_file_path = os.path.join(log_dir,"result.json")
+    merge_robot_results(log_dir, result_file_path)
+    sort_data(result_file_path, f"./result/stats_{scene}/sipp_{folder}_{seed}.json")
+    
+    
+def process_rrt(scene,folder,seed,args,c):
+    log_dir = f'log/{scene}/rrt/{folder}/{seed}/'
+    os.makedirs(log_dir, exist_ok = False)
 
-seeds = [879]
-for folder in tqdm(folders):
-    num_objects = get_num_obj(f'/home/alex/multitask/24-data-gen/in/{scene}/{folder}/obj_path.json')    
-    for seed in seeds:
+    command = [
+        './rrt.exe',
+        '-pnp',             'true',
+        '-mode',            "random_search",
+        '-seed',            str(seed),
+        '-robot_path',      args['robots'],
+        '-obj_path',        args['objects'],
+        '-attempt_komo',    'false',
+        '-display',         'false',
+        '-export_images',   'false',
+        '-log_dir',         "'"+log_dir+"'",
+        '-verbosity',       '0',
+        # '-scene_path',      args['scene'],
+        # '-obstacle_path',   args['obstacles']
+    ]
+    if 'scene' in args:
+        command.append('-scene_path')
+        command.append(args['scene'])
+    if 'obstacles' in args:
+        command.append('-obstacle_path')
+        command.append(args['obstacles'])
+    subprocess.run(' '.join(command),shell=True,stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)   
+    result_file_path = os.path.join(log_dir,"result.json")
+    merge_robot_results(log_dir, result_file_path)
+    sort_data(result_file_path, f"./result/stats_{scene}/rrt_{folder}_{seed}.json")   
+    
+    print("Done test №",c)
+    
+    
+def process(scene,folder,seed,args,c):
+    log_dir_rrt = f'log/{scene}/rrt/{folder}/{seed}/'
+    log_dir_sirrt = f'log/{scene}/sirrt/{folder}/{seed}/'
+    os.makedirs(log_dir_rrt, exist_ok = False)
+    os.makedirs(log_dir_sirrt, exist_ok = False)
+
+    command = [
+        './x.exe',
+        '-pnp',             'true',
+        '-mode',            "random_search",
+        '-seed',            str(seed),
+        '-robot_path',      args['robots'],
+        '-obj_path',        args['objects'],
+        '-attempt_komo',    'false',
+        '-display',         'false',
+        '-export_images',   'false',
+        '-log_dir_strrt',         "'"+log_dir_rrt+"'",
+        '-log_dir_sirrt',         "'"+log_dir_sirrt+"'",
+        '-verbosity',       '0',
+        # '-scene_path',      args['scene'],
+        # '-obstacle_path',   args['obstacles']
+    ]
+    if 'scene' in args:
+        command.append('-scene_path')
+        command.append(args['scene'])
+    if 'obstacles' in args:
+        command.append('-obstacle_path')
+        command.append(args['obstacles'])
+    subprocess.run(' '.join(command),shell=True,stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)   
+    result_file_path = os.path.join(log_dir_rrt,"result.json")
+    merge_robot_results(log_dir_rrt, result_file_path)
+    sirrt_result_file_path = os.path.join(log_dir_sirrt,"result.json")
+    merge_robot_results(log_dir_sirrt, sirrt_result_file_path)
+    sort_data(result_file_path, f"./result/stats_{scene}/rrt_{folder}_{seed}.json")   
+    sort_data(sirrt_result_file_path, f"./result/stats_{scene}/sipp_{folder}_{seed}.json")   
+    
+    print("Done test №",c)
+    
+
+def main():
+    
+    
+            
+    futures = []
+
         
-
-        args = { 'robots':    f'in/{scene}/{folder}/robot_path.json',
-                  'objects':   f'in/{scene}/{folder}/obj_path.json',
-                  'scene':     f'in/{scene}/{folder}/scene.g',
-                  'obstacles': f'in/{scene}/{folder}/obstacles_file.json'}
-
-        command = [
-            './sipp.exe',
-            '-pnp',             'true',
-            '-mode',            'random_search',
-            '-seed',            str(seed),
-            '-robot_path',      args['robots'],
-            '-obj_path',        args['objects'],
-            '-attempt_komo',    'false',
-            '-display',         'false',
-            '-export_images',   'false',
-            #'-scene_path',      args['scene'],
-            #'-obstacle_path',   args['obstacles']
-        ]
-        # validate_data(args)
-
-        clear_dir(directory)
-        subprocess.run(command)
-        merge_robot_results("/home/alex/multitask/24-data-gen/log", "/home/alex/multitask/24-data-gen/result.json")
-        sort_data("/home/alex/multitask/24-data-gen/result.json", f"/home/alex/multitask/24-data-gen/stats_random/sipp_{folder}.json")
+    with ProcessPoolExecutor(max_workers=NUM_CPUS) as executor:
+        c= 0
+        os.makedirs('./log',exist_ok=False)
         
+        os.makedirs('./result',exist_ok=False)
+        os.makedirs('./result/stats_random',exist_ok=False)
+        os.makedirs('./result/stats_conveyor',exist_ok=False)
+        os.makedirs('./result/stats_husky',exist_ok=False)
+        os.makedirs('./result/stats_shelf',exist_ok=False)
+        directory = "./in/random"
+        folders = [item for item in os.listdir(directory) if os.path.isdir(os.path.join(directory, item))]
+        print(f"Папки {len(folders)}:", folders)
 
-        command = [
-            './rrt.exe',
-            '-pnp',             'true',
-            '-mode',            'random_search',
-            '-seed',            str(seed),
-            '-robot_path',      args['robots'],
-            '-obj_path',        args['objects'],
-            '-attempt_komo',    'false',
-            '-display',         'false',
-            '-export_images',   'false',
-            # '-scene_path',      args['scene'],
-            # '-obstacle_path',   args['obstacles']
-        ]
-        clear_dir(directory)
-        subprocess.run(command)   
-        merge_robot_results("/home/alex/multitask/24-data-gen/log", "/home/alex/multitask/24-data-gen/result.json")
-        sort_data("/home/alex/multitask/24-data-gen/result.json", f"/home/alex/multitask/24-data-gen/stats_random/rrt_{folder}.json")    
+        scene = 'random'
+
+        seeds = [1,42,1902,503467340,13241,132412,3255234,1324,2364]
+        os.makedirs(f'./log/{scene}',exist_ok=False)
+        
+        for folder in tqdm(folders):
+            num_objects = get_num_obj(f'./in/{scene}/{folder}/obj_path.json')    
+            for seed in seeds:
+                c+=1
+                args = { 'robots':    "'"+f'in/{scene}/{folder}/robot_path.json'+"'",
+                'objects':   "'"+f'in/{scene}/{folder}/obj_path.json'+"'",
+                # 'scene':     f'in/{scene}/{folder}/scene.g',
+                # 'obstacles': f'in/{scene}/{folder}/obstacles_file.json'
+                }
+                futures.append(executor.submit(process, scene,folder,seed,args,c))
+            
+                
+                
+        directory = "./in/conveyor"
+        folders = [item for item in os.listdir(directory) if os.path.isdir(os.path.join(directory, item))]
+        print(f"Папки {len(folders)}:", folders)
+
+        scene = 'conveyor'
+
+        seeds = [1]
+        os.makedirs(f'./log/{scene}',exist_ok=False)
+        for folder in tqdm(folders):
+            num_objects = get_num_obj(f'./in/{scene}/{folder}/obj_path.json')    
+            for seed in seeds:
+                c+=1
+                args = { 'robots':    "'"+f'in/{scene}/{folder}/robot_path.json'+"'",
+                'objects':   "'"+f'in/{scene}/{folder}/obj_path.json'+"'",
+                'scene':     "'"+f'in/{scene}/{folder}/scene.g'+"'",
+                # 'obstacles': f'in/{scene}/{folder}/obstacles_file.json'
+                }
+                futures.append(executor.submit(process, scene,folder,seed,args,c))
+            
+                
+        directory = "./in/husky"
+        folders = [item for item in os.listdir(directory) if os.path.isdir(os.path.join(directory, item))]
+        print(f"Папки {len(folders)}:", folders)
+
+        scene = 'husky'
+
+        seeds = [1]
+        os.makedirs(f'./log/{scene}',exist_ok=False)
+        for folder in tqdm(folders):
+            num_objects = get_num_obj(f'./in/{scene}/{folder}/obj_path.json')    
+            for seed in seeds:
+                c+=1
+                args = { 'robots':    "'"+f'in/{scene}/{folder}/robot_path.json'+"'",
+                'objects':   "'"+f'in/{scene}/{folder}/obj_path.json'+"'",
+                'scene':     "'"+f'in/{scene}/0/scene.g'+"'",
+                # 'obstacles': f'in/{scene}/{folder}/obstacles_file.json'
+                }
+                futures.append(executor.submit(process, scene,folder,seed,args,c))
+            
+                
+        directory = "./in/shelf"
+        folders = [item for item in os.listdir(directory) if os.path.isdir(os.path.join(directory, item))]
+        print(f"Папки {len(folders)}:", folders)
+
+        scene = 'shelf'
+
+        seeds = [1]
+        os.makedirs(f'./log/{scene}',exist_ok=False)
+        for folder in tqdm(folders):
+            num_objects = get_num_obj(f'./in/{scene}/{folder}/obj_path.json')    
+            for seed in seeds:
+                c+=1
+                args = { 'robots':    "'"+f'in/{scene}/{folder}/robot_path.json'+"'",
+                'objects':   "'"+f'in/{scene}/{folder}/obj_path.json'+"'",
+                'scene':     "'"+f'in/{scene}/{folder}/scene.g'+"'",
+                'obstacles': "'"+f'in/{scene}/{folder}/obstacles_file.json'+"'"
+                }
+                futures.append(executor.submit(process, scene,folder,seed,args,c))
+            
+        
+    for future in tqdm(futures):
+        future.result()
+            
+if __name__=="__main__":
+    main() 

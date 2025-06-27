@@ -64,6 +64,8 @@ manip::Parameters global_params;
 //   auto plan = ctp.plan();
 //   return PlanResult(PlanStatus::failed);
 // }
+rai::String sirrt_log_dir_path_global;
+rai::String strrt_log_dir_path_global;
 
 Plan plan_multiple_arms_unsynchronized(rai::Configuration &C, const RobotTaskPoseMap &rtpm, const std::unordered_map<Robot, arr> &home_poses) {
   // generate random sequence of robot/pt pairs
@@ -432,7 +434,6 @@ extern "C" int backtrace(void **buffer, int size) {
 
 
 
-
 int main(int argc, char **argv) {
   auto console = spdlog::stdout_color_mt("console");
 
@@ -519,6 +520,16 @@ int main(int argc, char **argv) {
   const bool export_txt_files =
       rai::getParameter<bool>("export_txt_files", false);
   global_params.export_txt_files = export_txt_files;
+
+  const rai::String strrt_log_dir_path =
+      rai::getParameter<rai::String>("log_dir_strrt");
+
+  strrt_log_dir_path_global = strrt_log_dir_path;
+
+  const rai::String sirrt_log_dir_path =
+      rai::getParameter<rai::String>("log_dir_sirrt");
+
+  sirrt_log_dir_path_global = sirrt_log_dir_path;
 
   switch (verbosity) {
   case 0:
@@ -921,5 +932,6 @@ int main(int argc, char **argv) {
                                            home_poses);
   }
 
+  // std::cout<<"end"<<std::endl;
   return 0;
 }

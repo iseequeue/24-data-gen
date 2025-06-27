@@ -73,7 +73,11 @@ Plan plan_multiple_arms_random_search(
 
     // plan for it
     const auto plan_result = plan_multiple_arms_given_sequence(
-        C, rtpm, seq, home_poses, best_makespan);
+        C, rtpm, seq, home_poses, best_makespan, false,true);
+
+    const auto plan_resultrrt = plan_multiple_arms_given_sequence(
+        C, rtpm, seq, home_poses, best_makespan, false,false);
+
     if (plan_result.status == PlanStatus::success) {
       const Plan plan = plan_result.plan;
       const double makespan = get_makespan_from_plan(plan);

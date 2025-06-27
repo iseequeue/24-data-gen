@@ -28,7 +28,7 @@
 // std::string generate_filename() {
 //   auto now = std::chrono::system_clock::now();
 //   auto now_time_t = std::chrono::system_clock::to_time_t(now);
-//   auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count() % 1000;
+//   auto now_ms = std::chrono::duration_cast<std::chrono::microseconds>(now.time_since_epoch()).count() % 1000;
 
 //   std::tm now_tm = *std::localtime(&now_time_t);
 
@@ -555,7 +555,7 @@
 //     double arrival_time = 0.0;
 
 //     const uint max_delta = 10;
-//     const uint max_iter = 10;
+//     const uint max_iter = 3;
 //     TimedPath timedPath({}, {});
 //     for (uint i = 0; i < max_iter; ++i) {
 //       const uint time_ub = t_earliest_feas + max_delta * (i);
@@ -602,7 +602,7 @@
 //           // Записываем JSON в файл
 //           std::string filename = generate_filename();
   
-//           std::ofstream o("/home/alex/multitask/24-data-gen/log/" + filename);
+//           std::ofstream o(std::string(log_dir_path_global.p) + filename);
 //           o << std::setw(4) << j << std::endl;
 //           o.close();
   
@@ -831,7 +831,7 @@
 //       double arrival_time = 0.0;
 
 //       const uint max_delta = 10;
-//       const uint max_iter = 10;
+//       const uint max_iter = 3;
 //       TimedPath timedPath({}, {});
 //       for (uint i = 0; i < max_iter; ++i) {
 //         const uint time_ub = t_earliest_feas + max_delta * (i);
@@ -891,7 +891,7 @@
 //         // Записываем JSON в файл
 //         std::string filename = generate_filename();
 
-//         std::ofstream o("/home/alex/multitask/24-data-gen/log/" + filename);
+//         std::ofstream o(std::string(log_dir_path_global.p) + filename);
 //         o << std::setw(4) << j << std::endl;
 //         o.close();
 
@@ -2083,7 +2083,7 @@
 
 //         auto exit_path =
 //             plan_in_animation(TP, exit_start_time, exit_path_start_pose,
-//                               home_poses.at(robot), exit_start_time, robot, true);
+//                               home_poses.at(robot), exit_start_time, robot, true, false);
 //         exit_path.r = robot;
 //         exit_path.task_index = task;
 //         exit_path.is_exit = true;
@@ -2369,6 +2369,11 @@
 
 #include "json/json.h"
 #include <fstream>
+
+
+extern rai::String sirrt_log_dir_path_global;
+extern rai::String strrt_log_dir_path_global;
+
 using json = nlohmann::ordered_json;
 
 struct PlannerOptions{
@@ -2387,7 +2392,7 @@ struct PathPlannerOptions {
 std::string generate_filename() {
   auto now = std::chrono::system_clock::now();
   auto now_time_t = std::chrono::system_clock::to_time_t(now);
-  auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count() % 1000;
+  auto now_ms = std::chrono::duration_cast<std::chrono::microseconds>(now.time_since_epoch()).count() % 1000;
 
   std::tm now_tm = *std::localtime(&now_time_t);
 
@@ -2797,7 +2802,7 @@ TaskPart plan_in_animation_komo(TimedConfigurationProblem &TP,
 TaskPart plan_in_animation_rrt(TimedConfigurationProblem &TP,
                                const uint t0, const arr &q0, const arr &q1,
                                const uint time_lb, const Robot prefix,
-                               int time_ub_prev_found = -1) {
+                               int time_ub_prev_found, const bool sipp) {
   // TimedConfigurationProblem TP(C, A);
   // deleteUnnecessaryFrames(TP.C);
   // const auto pairs = get_cant_collide_pairs(TP.C);
@@ -2847,7 +2852,6 @@ TaskPart plan_in_animation_rrt(TimedConfigurationProblem &TP,
   // TP.C.watch(true);
 
 
-  bool sipp = true;
 
   if (sipp)
   {
@@ -2891,10 +2895,10 @@ TaskPart plan_in_animation_rrt(TimedConfigurationProblem &TP,
     double total_coll_time = 0;
 
     const uint max_delta = 20;
-    const uint max_iter = 10;
+    const uint max_iter = 3;
     TimedPath timedPath({}, {});
     for (uint i = 0; i < max_iter; ++i) {
-      const uint time_ub = t_earliest_feas + max_delta * (i+1) + 50;
+      const uint time_ub = t_earliest_feas + 50*i*i+100;
 
       spdlog::info("RRT iteration {}, upper bound time {}", i, time_ub);
       if (time_ub_prev_found > 0 && time_ub >= uint(time_ub_prev_found)) {
@@ -2912,7 +2916,7 @@ TaskPart plan_in_animation_rrt(TimedConfigurationProblem &TP,
       
       const auto rrt_end_time = std::chrono::high_resolution_clock::now();
       const auto rrt_duration =
-          std::chrono::duration_cast<std::chrono::milliseconds>(rrt_end_time -
+          std::chrono::duration_cast<std::chrono::microseconds>(rrt_end_time -
                                                                 rrt_start_time)
               .count();
 
@@ -2934,15 +2938,19 @@ TaskPart plan_in_animation_rrt(TimedConfigurationProblem &TP,
           {
             std::vector<double> q_i(res.path[i].begin(), res.path[i].end()); 
             double t_i = res.time(i);
+            const auto zd = TP.query(res.path[i], t_i);
+            if (!zd->isFeasible) {
+              spdlog::error("sirrt path is not feasible!");
+            }
             json_path.push_back({{"q", q_i}, {"t", t_i}});
           }
           j["path"] = json_path;
   
-        std::string fln = generate_filename();
-          std::ofstream o("/home/alex/multitask/24-data-gen/log/" + fln);
+        std::string fln = "sirrt_"+generate_filename();
+          std::ofstream o(std::string(sirrt_log_dir_path_global.p) + fln);
           o << std::setw(4) << j << std::endl;
           o.close();  
-          std::cout << "Путь робота записан в файл " <<  fln << std::endl;
+          std::cout << "Путь робота записан в файл " <<  std::string(sirrt_log_dir_path_global.p) + fln << std::endl;
         }
 
       if (res.time.N != 0) {
@@ -2961,6 +2969,15 @@ TaskPart plan_in_animation_rrt(TimedConfigurationProblem &TP,
     }
     //========================================================================================================================
     
+    for(uint i = 0; i < timedPath.path.d0; i++) 
+          {
+            double t_i = timedPath.time(i);
+            // json_path.push_back({{"q", q_i}, {"t", t_i}});
+            const auto zd = TP.query(timedPath.path[i], t_i);
+            if (!zd->isFeasible) {
+              spdlog::error("path is not feasible!");
+            }
+          }
 
     // resample
     const uint N = std::ceil(timedPath.time(timedPath.time.N - 1) - t0) + 1;
@@ -3165,10 +3182,10 @@ TaskPart plan_in_animation_rrt(TimedConfigurationProblem &TP,
       double total_coll_time = 0;
 
       const uint max_delta = 20;
-      const uint max_iter = 10;
+      const uint max_iter = 3;
       TimedPath timedPath({}, {});
       for (uint i = 0; i < max_iter; ++i) {
-        const uint time_ub = t_earliest_feas + max_delta * (i+1) + 50;
+        const uint time_ub = t_earliest_feas + 50*i*i+100;
 
         spdlog::info("RRT iteration {}, upper bound time {}", i, time_ub);
         if (time_ub_prev_found > 0 && time_ub >= uint(time_ub_prev_found)) {
@@ -3181,7 +3198,7 @@ TaskPart plan_in_animation_rrt(TimedConfigurationProblem &TP,
         
         const auto rrt_end_time = std::chrono::high_resolution_clock::now();
         const auto rrt_duration =
-            std::chrono::duration_cast<std::chrono::milliseconds>(rrt_end_time -
+            std::chrono::duration_cast<std::chrono::microseconds>(rrt_end_time -
                                                                   rrt_start_time)
                 .count();
 
@@ -3208,11 +3225,11 @@ TaskPart plan_in_animation_rrt(TimedConfigurationProblem &TP,
           }
           j["path"] = json_path;
   
-          std::string fln = generate_filename();
-          std::ofstream o("/home/alex/multitask/24-data-gen/log/" + fln);
+          std::string fln = "rrt_"+generate_filename();
+          std::ofstream o(std::string(strrt_log_dir_path_global.p) + fln);
           o << std::setw(4) << j << std::endl;
           o.close();  
-          std::cout << "Путь робота записан в файл " << fln << std::endl;
+          std::cout << "Путь робота записан в файл " << std::string(strrt_log_dir_path_global.p) + fln << std::endl;
         }
 
         if (res.time.N != 0) {
@@ -3408,7 +3425,7 @@ TaskPart plan_in_animation_constrained(){
 TaskPart plan_in_animation(TimedConfigurationProblem &TP,
                            const uint t0, const arr &q0, const arr &q1,
                            const uint time_lb, const Robot r,
-                           const bool exit_path) {
+                           const bool exit_path, const bool sipp) {
   const auto start_time = std::chrono::high_resolution_clock::now();
 
   // rai::Configuration CPlan = C;
@@ -3426,7 +3443,7 @@ TaskPart plan_in_animation(TimedConfigurationProblem &TP,
   // run rrt
   // TP.C.fcl()->stopEarly = false;
 
-  TaskPart rrt_path = plan_in_animation_rrt(TP, t0, q0, q1, time_lb, r);
+  TaskPart rrt_path = plan_in_animation_rrt(TP, t0, q0, q1, time_lb, r, -1,sipp);
   rrt_path.algorithm = "rrt";
 
   // add waiting times for grabbing
@@ -3568,14 +3585,14 @@ class PrioritizedTaskPlanner {
 
     uint best_makespan_so_far;
     bool early_stopping;
-
+    bool sipp;
     // swap to goal sampler not precomputed goal poses
     PrioritizedTaskPlanner(const std::unordered_map<Robot, arr> &_home_poses,
                 const RobotTaskPoseMap &_rtpm, const uint _best_makespan_so_far,
-                const bool _early_stopping)
+                const bool _early_stopping, const bool _sipp)
         : home_poses(_home_poses), rtpm(_rtpm),
           best_makespan_so_far(_best_makespan_so_far),
-          early_stopping(_early_stopping) {}
+          early_stopping(_early_stopping), sipp(_sipp) {}
 
     // TODO: swap to std::map<Robot, uint> finishing_times;
     PlanStatus plan(rai::Configuration &C, const RobotTaskPair &rtp,
@@ -3679,7 +3696,8 @@ class PrioritizedTaskPlanner {
           spdlog::info("Picking start time {}", pick_start_time);
 
           auto path = plan_in_animation(TP, pick_start_time, pick_start_pose, pick_pose,
-                                        0, r1, false);
+                                        0, r1, false, sipp);
+                                        
 
           if (path.has_solution) {
             if (false) {
@@ -3879,7 +3897,9 @@ class PrioritizedTaskPlanner {
           // std::cout << TP.C.getJointState() << std::endl;
           
           auto path = plan_in_animation(TP, start_time, handover_start_pose, handover_pose,
-                                        t_lb, r1, false);
+                                        t_lb, r1, false,sipp);
+            
+                                        
 
           if (path.has_solution) {
             if (false) {
@@ -4035,7 +4055,8 @@ class PrioritizedTaskPlanner {
 
           auto exit_path =
               plan_in_animation(TP, exit_start_time, exit_path_start_pose,
-                                home_poses.at(r1), exit_start_time, r1, true);
+                                home_poses.at(r1), exit_start_time, r1, true,sipp);
+                                
 
           if (exit_path.has_solution) {
             const auto exit_anim_part = make_animation_part(
@@ -4068,7 +4089,8 @@ class PrioritizedTaskPlanner {
 
           auto path =
               plan_in_animation(TP, start_time, start_pose,
-                                rtpm[rtp][0][2], start_time, r2, false);
+                                rtpm[rtp][0][2], start_time, r2, false,sipp);
+                                
 
           if (path.has_solution) {
             if (false) {
@@ -4122,20 +4144,18 @@ class PrioritizedTaskPlanner {
           to->linkFrom(from, true);
             // to->joint->makeRigid();
         }
-
         // plan exit
         {
           setActive(CPlanner, r2);
           const uint exit_start_time = paths[r2].back().t(-1);
           const arr exit_path_start_pose = paths[r2].back().path[-1];
-
           rai::Animation A = make_animation_from_plan(paths);
-
           TP.A = A;
-
           auto exit_path =
               plan_in_animation(TP, exit_start_time, exit_path_start_pose,
-                                home_poses.at(r2), exit_start_time, r1, true);
+                                home_poses.at(r2), exit_start_time, r1, true,sipp);
+                                
+                                
 
           if (exit_path.has_solution) {
             const auto exit_anim_part = make_animation_part(
@@ -4289,7 +4309,8 @@ class PrioritizedTaskPlanner {
           // TP.C.watch(true);
 
           auto path = plan_in_animation(TP, start_time, start_pose, goal_pose,
-                                        time_lb, robot, false);
+                                        time_lb, robot, false,sipp);
+                                        
 
           path.r = robot;
           path.task_index = task;
@@ -4404,7 +4425,9 @@ class PrioritizedTaskPlanner {
 
         auto exit_path =
             plan_in_animation(TP, exit_start_time, exit_path_start_pose,
-                              home_poses.at(robot), exit_start_time, robot, true);
+                              home_poses.at(robot), exit_start_time, robot, true, sipp);
+        
+                              
         exit_path.r = robot;
         exit_path.task_index = task;
         exit_path.is_exit = true;
@@ -4438,7 +4461,7 @@ PlanResult plan_multiple_arms_given_subsequence_and_prev_plan(
     rai::Configuration C, const RobotTaskPoseMap &rtpm,
     const OrderedTaskSequence &sequence, const uint start_index,
     const Plan prev_plan, const std::unordered_map<Robot, arr> &home_poses,
-    const uint best_makespan_so_far = 1e6, const bool early_stopping = false) {
+    const uint best_makespan_so_far = 1e6, const bool early_stopping = false, const bool sipp = false) {
   rai::Configuration CPlanner = C;
   // C.watch(true);
 
@@ -4551,7 +4574,7 @@ PlanResult plan_multiple_arms_given_subsequence_and_prev_plan(
 
     auto exit_path =
         plan_in_animation(TP, p.second, start_pose,
-                          home_poses.at(robot), p.second + 5, robot, true);
+                          home_poses.at(robot), p.second + 5, robot, true,sipp);
     exit_path.r = robot;
     exit_path.task_index = task_index;
     exit_path.is_exit = true;
@@ -4585,7 +4608,7 @@ PlanResult plan_multiple_arms_given_subsequence_and_prev_plan(
     }*/
   }
 
-  PrioritizedTaskPlanner planner(home_poses, rtpm, best_makespan_so_far, early_stopping);
+  PrioritizedTaskPlanner planner(home_poses, rtpm, best_makespan_so_far, early_stopping, sipp);
   
   // actually plan
   for (uint i = start_index; i < sequence.size(); ++i) {
@@ -4659,10 +4682,10 @@ PlanResult plan_multiple_arms_given_subsequence_and_prev_plan(
 PlanResult plan_multiple_arms_given_sequence(
     rai::Configuration C, const RobotTaskPoseMap &rtpm,
     const OrderedTaskSequence &sequence, const std::unordered_map<Robot, arr> &home_poses,
-    const uint best_makespan_so_far = 1e6, const bool early_stopping = false) {
+    const uint best_makespan_so_far = 1e6, const bool early_stopping = false, const bool sipp = false) {
 
   Plan paths;
   return plan_multiple_arms_given_subsequence_and_prev_plan(
       C, rtpm, sequence, 0, paths, home_poses, best_makespan_so_far,
-      early_stopping);
+      early_stopping, sipp);
 }
