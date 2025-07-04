@@ -1,6 +1,6 @@
 World 	{  X:<[0, 0, 0, 1, 0, 0, 0]> }                         
 
-Include: '/home/alex/multitask/rai-robotModels/husky/husky.g'
+Include: '/root/work/q/rai-robotModels/husky/husky.g'
 Edit base_link {X:<[0, -1.1, 0.15, 0.707, 0, 0, 0.707]>}
 
 #Prefix: "a0_"

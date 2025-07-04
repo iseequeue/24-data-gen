@@ -47,19 +47,25 @@ def merge_robot_results(input_dir, output_file):
                     data = json.load(f)
                     if data['success'] == 1:
                         merged_data.append(data)
+                    # else:
+                    #     merged_data = []
+                    #     break
             except Exception as e:
                 print(f"Ошибка при чтении файла {filename}: {e}")
 
     # Сохраняем объединённые данные
     try:
-        with open(output_file, "w", encoding="utf-8") as f:
-            json.dump(merged_data, f, indent=4, ensure_ascii=False)
+        if len(merged_data) !=0:
+            with open(output_file, "w", encoding="utf-8") as f:
+                json.dump(merged_data, f, indent=4, ensure_ascii=False)
         # print(f"Объединённый файл сохранён: {output_file}")
     except Exception as e:
         print(f"Ошибка при сохранении файла: {e}")
 
 
 def sort_data(input_file, output_file):
+    if not os.path.exists(input_file):
+        return
     with open(input_file, "r", encoding="utf-8") as f:
         data = json.load(f)
 
